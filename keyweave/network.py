@@ -1,33 +1,25 @@
-# --- Updated network.py with modern IPFS support using requests ---
-
 import requests
-from .crypto import shamir_split_secret, shamir_reconstruct_secret
-
-class IPFSClient:
-    def __init__(self, api_url='http://127.0.0.1:5001'):
-        self.api_url = api_url
-
-    def add_str(self, data):
-        files = {'file': ('shard.txt', data)}
-        response = requests.post(f'{self.api_url}/api/v0/add', files=files)
-        response.raise_for_status()
-        return response.json()['Hash']
-
-    def cat(self, cid):
-        response = requests.post(f'{self.api_url}/api/v0/cat?arg={cid}')
-        response.raise_for_status()
-        return response.content
+from cryptography.fernet import Fernet
+from keyweave.crypto import shamir_split_secret, shamir_reconstruct_secret
+from keyweave.entities import FERNET_KEY
 
 class KeyWeaveNetwork:
     """
     Orchestrates the KeyWeave process, acting as the decentralized network.
-    Now stores shards in IPFS using HTTP API.
+    Uses IPFS to store encrypted shards.
     """
     def __init__(self):
         self.guardian_commitments = {}
-        self.ipfs_client = IPFSClient()  # Uses HTTP API to connect to IPFS
+        self.api_url = "http://127.0.0.1:5001"
+
+    def add_to_ipfs(self, data: bytes) -> str:
+        files = {'file': ('shard.txt', data)}
+        response = requests.post(f"{self.api_url}/api/v0/add", files=files)
+        response.raise_for_status()
+        return response.json()["Hash"]
 
     def setup_escrow(self, secret, policy, guardians):
+        """Splits and encrypts the secret, uploads to IPFS, and distributes CIDs."""
         print("\n--- Initiating KeyWeave Setup ---")
         if policy.num_guardians != len(guardians):
             raise ValueError("Policy must match the number of provided guardians.")
@@ -35,18 +27,23 @@ class KeyWeaveNetwork:
         shares = shamir_split_secret(secret, policy.threshold, policy.num_guardians)
         print(f"[KeyWeave] Secret split into {len(shares)} shares.")
 
+        fernet = Fernet(FERNET_KEY)
+
         for i, guardian in enumerate(guardians):
-            shard = shares[i]
-            shard_data = f"{shard[0]},{shard[1]}"
-            # Upload shard to IPFS
-            cid = self.ipfs_client.add_str(shard_data)
+            x, y = shares[i]
+            shard_string = f"{x},{y}"
+            encrypted = fernet.encrypt(shard_string.encode('utf-8'))
+
+            cid = self.add_to_ipfs(encrypted)
             print(f"[IPFS] Uploaded shard for {guardian.name}, CID: {cid}")
-            guardian.receive_shard_ipfs(cid)
+            guardian.receive_shard_ipfs(cid, FERNET_KEY)
+
             self.guardian_commitments[guardian.did] = guardian.commitment
 
-        print("[KeyWeave] All shares uploaded to IPFS and commitments recorded.")
+        print("[KeyWeave] All shares encrypted, uploaded to IPFS, and commitments recorded.")
 
     def initiate_recovery(self, recovery_guardians, policy):
+        """Verifies guardian proofs and reconstructs the secret if threshold is met."""
         print(f"\n--- Initiating KeyWeave Recovery for {len(recovery_guardians)} guardians ---")
         if len(recovery_guardians) < policy.threshold:
             print(f"[KeyWeave] RECOVERY FAILED: Not enough guardians. Need {policy.threshold}, got {len(recovery_guardians)}.")

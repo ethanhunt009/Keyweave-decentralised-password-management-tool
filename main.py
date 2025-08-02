@@ -1,27 +1,21 @@
-from keyweave.entities import Guardian, RecoveryPolicy
+from keyweave.entities import Guardian, RecoveryPolicy, PREDEFINED_GUARDIANS
 from keyweave.network import KeyWeaveNetwork
 import time
 
-# --- Helper Functions for UI ---
-
+# --- Helper Functions ---
 def print_header(title):
-    """Prints a formatted header."""
     print("\n" + "="*50)
     print(f"🚀 {title} 🚀")
     print("="*50)
 
 def print_backend(message):
-    """Simulates a backend log message for clarity."""
     print(f"\n[BACKEND LOG]... {message}")
-    time.sleep(0.5) # A small delay for dramatic effect
+    time.sleep(0.5)
 
-# --- Main Interactive Loop ---
-
+# --- Main Program ---
 def main_interactive_loop():
-    """Runs the main interactive menu for the demonstration."""
-    # Global state for the demo
     my_secret_string = None
-    guardians = []
+    guardians = PREDEFINED_GUARDIANS.copy()
     policy = None
     network = None
     is_setup_complete = False
@@ -30,37 +24,25 @@ def main_interactive_loop():
         print("\n--- KeyWeave Interactive Menu ---")
         print("1. [SETUP] Create a secret and set up Guardian escrow")
         print("2. [RECOVERY] Attempt to recover the secret")
-        print("3. Exit")
-        
+        print("3. [REGISTER] Add a new Guardian")
+        print("4. Exit")
+
         choice = input("Enter your choice: ")
 
         if choice == '1':
             print_header("Setting Up KeyWeave Escrow")
             secret_input = input("Enter an alphanumeric secret (e.g., a password or key): ")
-            if not secret_input:
-                print("No secret entered. Using a default secret.")
-                my_secret_string = "MyP@ssw0rd!_123"
-            else:
-                my_secret_string = secret_input
-            
-            # --- ENCODING: Convert the string secret to an integer for the crypto ---
-            # The Shamir's algorithm works on numbers, so we encode the string.
+            my_secret_string = secret_input if secret_input else "MyP@ssw0rd!_123"
             secret_as_int = int.from_bytes(my_secret_string.encode('utf-8'), 'big')
             print_backend(f"User's secret '{my_secret_string}' encoded to a large integer.")
-            
-            print_backend("Initializing Guardians...")
-            guardians = [Guardian("Alice (Family)"), Guardian("Bob (Friend)"), Guardian("Charlie (Lawyer)"), Guardian("David (Friend)"), Guardian("Eve (Colleague)")]
-            for g in guardians:
-                print(f"  -> Guardian '{g.name}' created with DID: {g.did[:15]}...")
-            
-            print_backend("Defining the Recovery Policy (3 of 5 required)...")
-            policy = RecoveryPolicy(threshold=3, guardian_dids=[g.did for g in guardians])
-            
+
+            print_backend("Defining the Recovery Policy with runtime threshold...")
+            policy = RecoveryPolicy([g.did for g in guardians])
+
             print_backend("Initializing the KeyWeave Network and distributing shards...")
             network = KeyWeaveNetwork()
-            # We pass the integer version of the secret to the network
             network.setup_escrow(secret_as_int, policy, guardians)
-            
+
             is_setup_complete = True
             print("\n✅ Setup is complete! The secret is now protected by the Guardians.")
 
@@ -73,34 +55,34 @@ def main_interactive_loop():
             print("Available Guardians:")
             for i, g in enumerate(guardians):
                 print(f"  {i+1}: {g.name}")
-            print("  6: Mallory (An UNKNOWN Impostor)")
+            print(f"  {len(guardians)+1}: Mallory (An UNKNOWN Impostor)")
 
             selection = input("Enter the numbers of participating guardians, separated by commas (e.g., 1,3,5): ")
-            
             participating_guardians = []
+
             try:
-                indices = [int(s.strip())-1 for s in selection.split(',')]
+                indices = [int(s.strip()) - 1 for s in selection.split(',')]
                 print_backend(f"User selected guardians with numbers: {[i+1 for i in indices]}")
 
                 for i in indices:
                     if 0 <= i < len(guardians):
                         participating_guardians.append(guardians[i])
-                    elif i == 5: # The impostor
+                    elif i == len(guardians):
                         print_backend("An impostor is attempting to join the recovery!")
                         impostor = Guardian("Mallory (Impostor)")
-                        impostor.receive_shard((99, 99999)) # Fake shard
+                        impostor.shard = (99, 99999)
+                        impostor.commitment = "invalid"
                         participating_guardians.append(impostor)
                     else:
                         print(f"Warning: Guardian number {i+1} is invalid and will be ignored.")
             except ValueError:
                 print("\n❌ Invalid input. Please enter numbers separated by commas.")
                 continue
-                
+
             print_backend("Starting the recovery protocol with the selected participants...")
             recovered_secret_as_int = network.initiate_recovery(participating_guardians, policy)
-            
+
             if recovered_secret_as_int is not None:
-                # --- DECODING: Convert the recovered integer back to a string ---
                 num_bytes = (recovered_secret_as_int.bit_length() + 7) // 8
                 recovered_secret_string = recovered_secret_as_int.to_bytes(num_bytes, 'big').decode('utf-8')
 
@@ -115,15 +97,23 @@ def main_interactive_loop():
                     print("🔥 CRITICAL ERROR: Reconstructed secret does NOT match the original!")
             else:
                 print("\n" + "="*50)
-                print(f"🛡️ RECOVERY FAILED. 🛡️")
+                print("🛡️ RECOVERY FAILED. 🛡️")
                 print("The secret remains secure. This is the expected outcome if the policy conditions were not met.")
                 print("="*50)
 
         elif choice == '3':
+            print_header("Registering New Guardian")
+            guardian_name = input("Enter the new Guardian's name: ")
+            new_guardian = Guardian(guardian_name)
+            guardians.append(new_guardian)
+            print(f"✅ Guardian '{new_guardian.name}' added at runtime with DID: {new_guardian.did[:15]}...")
+
+        elif choice == '4':
             print("\nExiting KeyWeave demonstration. Goodbye! 👋")
             break
+
         else:
-            print("\nInvalid choice. Please enter 1, 2, or 3.")
+            print("\nInvalid choice. Please enter 1, 2, 3, or 4.")
 
 if __name__ == "__main__":
     main_interactive_loop()
