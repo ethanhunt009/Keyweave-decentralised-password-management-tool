@@ -1,35 +1,33 @@
 import uuid
 import hashlib
+import requests
 
 class Guardian:
-    """
-    Represents a Guardian in the KeyWeave network.
-    """
     def __init__(self, name):
         self.name = name
-        # SIMULATION: Decentralized Identifier (DID)
         self.did = f"did:example:{uuid.uuid4()}"
         self.shard = None
         self.commitment = None
+        self.cid = None
 
-    def receive_shard(self, shard):
-        """Receives a secret shard and creates a public commitment to it."""
-        self.shard = shard
-        # SIMULATION: Zero-Knowledge Proof Commitment
-        shard_string = f"{self.shard[0]},{self.shard[1]}"
+    def receive_shard_ipfs(self, cid):
+        """Fetch shard from IPFS using CID via HTTP."""
+        response = requests.post(f"http://127.0.0.1:5001/api/v0/cat?arg={cid}")
+        response.raise_for_status()
+        shard_string = response.content.decode('utf-8')
+        x, y = map(int, shard_string.split(','))
+        self.shard = (x, y)
         self.commitment = hashlib.sha256(shard_string.encode()).hexdigest()
-        print(f"  [Guardian {self.name}] Received shard. Public commitment is: {self.commitment[:10]}...")
+        self.cid = cid
+        print(f"  [Guardian {self.name}] Received IPFS shard CID: {cid[:10]}... Commitment: {self.commitment[:10]}...")
 
     def provide_proof(self):
-        """SIMULATION of a Guardian providing a Zero-Knowledge Proof."""
         print(f"  [Guardian {self.name}] Providing proof of shard knowledge.")
         return {"did": self.did, "commitment": self.commitment}
-        
+
     def provide_shard_for_reconstruction(self):
-        """Called ONLY after enough valid proofs have been provided."""
         print(f"  [Guardian {self.name}] Proof accepted. Providing shard for reconstruction.")
         return self.shard
-
 class RecoveryPolicy:
     """
     Represents a user's recovery policy, like a Verifiable Credential.
