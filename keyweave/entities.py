@@ -1,12 +1,13 @@
 import uuid
 import hashlib
 import requests
-from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 
 class Guardian:
     """
-    Represents a Guardian in the KeyWeave network.
-    Runtime registration supported with 5 predefined guardians.
+    Represents a Guardian in the KeyWeave network with RSA encryption.
+    Each guardian generates their own RSA key pair.
     """
     registry = {}
 
@@ -18,23 +19,48 @@ class Guardian:
         self.shard = None
         self.commitment = None
         self.cid = None
+        
+        # Generate RSA key pair
+        self.private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+        
+        # Serialize public key for distribution
+        self.public_key = self.private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode('utf-8')
+        
         Guardian.registry[self.did] = self
         print(f"[Guardian Registered] {self.name} with DID {self.did[:15]}...")
+        print(f"  Generated RSA key pair")
 
-    def receive_shard_ipfs(self, cid, fernet_key):
-        """Fetch encrypted shard from IPFS and decrypt using Fernet."""
+    def receive_shard_ipfs(self, cid):
+        """Fetch encrypted shard from IPFS and decrypt using private key."""
         response = requests.post(f"http://127.0.0.1:5001/api/v0/cat?arg={cid}")
         response.raise_for_status()
         encrypted_data = response.content
-
-        f = Fernet(fernet_key)
-        shard_string = f.decrypt(encrypted_data).decode('utf-8')
+        
+        # Decrypt with private key
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives import hashes
+        
+        shard_string = self.private_key.decrypt(
+            encrypted_data,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        ).decode('utf-8')
 
         x, y = map(int, shard_string.split(','))
         self.shard = (x, y)
         self.commitment = hashlib.sha256(shard_string.encode()).hexdigest()
         self.cid = cid
-        print(f"  [Guardian {self.name}] Received IPFS shard CID: {cid[:10]}... Commitment: {self.commitment[:10]}...")
+        print(f"  [Guardian {self.name}] Received IPFS shard CID: {cid[:10]}...")
+        print(f"  Decrypted shard with private key. Commitment: {self.commitment[:10]}...")
 
     def provide_proof(self):
         print(f"  [Guardian {self.name}] Providing proof of shard knowledge.")
@@ -48,10 +74,7 @@ class Guardian:
     def get_by_did(cls, did):
         return cls.registry.get(did)
 
-# Fernet key for encryption (shared across guardians)
-FERNET_KEY = Fernet.generate_key()
-
-# Predefined Guardians
+# Predefined Guardians (generate with RSA keys)
 PREDEFINED_GUARDIANS = [
     Guardian("Alice (Family)"),
     Guardian("Bob (Friend)"),

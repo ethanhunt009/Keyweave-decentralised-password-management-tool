@@ -41,10 +41,13 @@ def main_interactive_loop():
 
             print_backend("Initializing the KeyWeave Network and distributing shards...")
             network = KeyWeaveNetwork()
-            network.setup_escrow(secret_as_int, policy, guardians)
-
-            is_setup_complete = True
-            print("\n✅ Setup is complete! The secret is now protected by the Guardians.")
+            success = network.setup_escrow(secret_as_int, policy, guardians)
+            
+            if success:
+                is_setup_complete = True
+                print("\n✅ Setup is complete! The secret is now protected by the Guardians.")
+            else:
+                print("\n❌ Setup failed. Please ensure IPFS daemon is running.")
 
         elif choice == '2':
             if not is_setup_complete:
