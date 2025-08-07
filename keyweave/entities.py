@@ -1,3 +1,4 @@
+# ----- entities.py -----
 import uuid
 import hashlib
 import requests
