@@ -3,6 +3,10 @@ from keyweave.entities import Guardian, RecoveryPolicy, PREDEFINED_GUARDIANS
 from keyweave.network import KeyWeaveNetwork
 import time
 import base64
+import hashlib
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 
 # --- Helper Functions ---
 def print_header(title):
@@ -14,20 +18,41 @@ def print_backend(message):
     print(f"\n[BACKEND LOG]... {message}")
     time.sleep(0.5)
 
-# New helper functions for PIN encryption
-def simple_encrypt(plaintext, pin):
-    plain_bytes = plaintext.encode('utf-8')
-    pin_bytes = pin.encode('utf-8')
-    repeated_pin = (pin_bytes * (len(plain_bytes) // len(pin_bytes) + 1))[:len(plain_bytes)]
-    cipher_bytes = bytes([a ^ b for a, b in zip(plain_bytes, repeated_pin)])
-    return base64.b64encode(cipher_bytes).decode('utf-8')
+# Generate encryption key from PIN
+def generate_key_from_pin(pin):
+    salt = b'KeyWeaveSalt123'  # Should be unique per installation in production
+    return hashlib.pbkdf2_hmac('sha256', pin.encode(), salt, 100000, 32)
 
-def simple_decrypt(ciphertext, pin):
-    cipher_bytes = base64.b64decode(ciphertext)
-    pin_bytes = pin.encode('utf-8')
-    repeated_pin = (pin_bytes * (len(cipher_bytes) // len(pin_bytes) + 1))[:len(cipher_bytes)]
-    plain_bytes = bytes([a ^ b for a, b in zip(cipher_bytes, repeated_pin)])
-    return plain_bytes.decode('utf-8')
+# AES encryption with PIN-derived key
+def encrypt_with_pin(plaintext, pin):
+    key = generate_key_from_pin(pin)
+    iv = os.urandom(16)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+    
+    # Pad plaintext to multiple of 16 bytes
+    pad_len = 16 - (len(plaintext) % 16)
+    padded_text = plaintext.encode() + bytes([pad_len] * pad_len)
+    
+    ciphertext = encryptor.update(padded_text) + encryptor.finalize()
+    return base64.b64encode(iv + ciphertext).decode('utf-8')
+
+# AES decryption with PIN-derived key
+def decrypt_with_pin(ciphertext, pin):
+    try:
+        data = base64.b64decode(ciphertext)
+        iv = data[:16]
+        ciphertext = data[16:]
+        key = generate_key_from_pin(pin)
+        
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        
+        padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        pad_len = padded_plaintext[-1]
+        return padded_plaintext[:-pad_len].decode('utf-8')
+    except Exception:
+        return None
 
 # --- Main Program ---
 def main_interactive_loop():
@@ -36,8 +61,8 @@ def main_interactive_loop():
     policy = None
     network = None
     is_setup_complete = False
-    # New state variables for backup PIN
-    backup_pin = None
+    # State variables for backup PIN
+    backup_set = False
     backup_secret_encrypted = None
 
     while True:
@@ -61,14 +86,15 @@ def main_interactive_loop():
             set_pin = input("Would you like to set a backup PIN? (y/n): ").lower()
             if set_pin == 'y':
                 while True:
-                    pin1 = input("Set a backup PIN (min 4 digits): ")
-                    if len(pin1) < 4:
-                        print("PIN must be at least 4 digits")
+                    pin1 = input("Set a secure backup PIN (min 8 characters): ")
+                    if len(pin1) < 8:
+                        print("PIN must be at least 8 characters")
                         continue
                     pin2 = input("Confirm backup PIN: ")
                     if pin1 == pin2:
-                        backup_pin = pin1
-                        backup_secret_encrypted = simple_encrypt(my_secret_string, backup_pin)
+                        # Encrypt secret with strong AES encryption
+                        backup_secret_encrypted = encrypt_with_pin(my_secret_string, pin1)
+                        backup_set = True
                         print("✅ Backup PIN set successfully")
                         break
                     else:
@@ -145,20 +171,23 @@ def main_interactive_loop():
                 print("="*50)
                 
                 # Backup PIN recovery option
-                if backup_pin is not None:
+                if backup_set:
                     use_backup = input("Recovery failed. Would you like to use your backup PIN? (y/n): ").lower()
                     if use_backup == 'y':
                         pin_attempt = input("Enter your backup PIN: ")
                         try:
-                            decrypted_secret = simple_decrypt(backup_secret_encrypted, pin_attempt)
-                            print("\n" + "="*50)
-                            print(f"🎉 BACKUP RECOVERY SUCCEEDED! 🎉")
-                            print(f"Recovered Secret: {decrypted_secret}")
-                            print("="*50)
-                            if decrypted_secret == my_secret_string:
-                                print("✅ The reconstructed secret matches the original!")
+                            decrypted_secret = decrypt_with_pin(backup_secret_encrypted, pin_attempt)
+                            if decrypted_secret:
+                                print("\n" + "="*50)
+                                print(f"🎉 BACKUP RECOVERY SUCCEEDED! 🎉")
+                                print(f"Recovered Secret: {decrypted_secret}")
+                                print("="*50)
+                                if decrypted_secret == my_secret_string:
+                                    print("✅ The reconstructed secret matches the original!")
+                                else:
+                                    print("🔥 CRITICAL ERROR: Reconstructed secret does NOT match the original!")
                             else:
-                                print("🔥 CRITICAL ERROR: Reconstructed secret does NOT match the original!")
+                                print("❌ Backup recovery failed: Invalid PIN or corrupted data")
                         except Exception as e:
                             print(f"❌ Backup recovery failed: {e}")
                     else:
