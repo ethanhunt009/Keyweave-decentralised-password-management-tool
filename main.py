@@ -5,6 +5,9 @@ import time
 import base64
 import hashlib
 import os
+import json
+import socket
+from datetime import datetime
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
@@ -54,6 +57,55 @@ def decrypt_with_pin(ciphertext, pin):
     except Exception:
         return None
 
+# Create audit record for recovery attempts
+def create_audit_record(guardian_ids, outcome, user_id=None):
+    # Generate a unique nonce
+    nonce = os.urandom(16).hex()
+    
+    # Get current timestamp
+    timestamp = datetime.utcnow().isoformat()
+    
+    # Get IP address (simplified for demo)
+    try:
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+    except:
+        ip_address = "127.0.0.1"
+    
+    # Create record
+    record = {
+        "guardian_ids": guardian_ids,
+        "timestamp": timestamp,
+        "user_id": user_id or "default_user",  # In a real system, this would be a unique user identifier
+        "outcome": outcome,
+        "nonce": nonce,
+        "ip_address": ip_address
+    }
+    
+    # Create hash of the record
+    record_json = json.dumps(record, sort_keys=True)
+    record_hash = hashlib.sha256(record_json.encode()).hexdigest()
+    
+    # Store the record (in a real system, this would be stored in a secure database)
+    audit_log = []
+    if os.path.exists("audit_log.json"):
+        try:
+            with open("audit_log.json", "r") as f:
+                audit_log = json.load(f)
+        except:
+            audit_log = []
+    
+    audit_log.append({
+        "record": record,
+        "hash": record_hash
+    })
+    
+    with open("audit_log.json", "w") as f:
+        json.dump(audit_log, f, indent=2)
+    
+    print_backend(f"Audit record created with hash: {record_hash}")
+    return record_hash
+
 # --- Main Program ---
 def main_interactive_loop():
     my_secret_string = None
@@ -64,13 +116,21 @@ def main_interactive_loop():
     # State variables for backup PIN
     backup_set = False
     backup_secret_encrypted = None
+    # User identifier (in a real system, this would be a proper user ID)
+    user_id = f"user_{int(time.time())}"
+    
+    # Track recovery attempts
+    recovery_attempts = 0
+    last_attempt_time = 0
+    recovery_frozen_until = 0
 
     while True:
         print("\n--- KeyWeave Interactive Menu ---")
         print("1. [SETUP] Create a secret and set up Guardian escrow")
         print("2. [RECOVERY] Attempt to recover the secret")
         print("3. [REGISTER] Add a new Guardian")
-        print("4. Exit")
+        print("4. [AUDIT] View audit log")
+        print("5. Exit")
 
         choice = input("Enter your choice: ")
 
@@ -116,6 +176,14 @@ def main_interactive_loop():
                 print("\n❌ Setup failed. Please ensure IPFS daemon is running.")
 
         elif choice == '2':
+            current_time = time.time()
+            
+            # Check if recovery is frozen
+            if current_time < recovery_frozen_until:
+                remaining_time = recovery_frozen_until - current_time
+                print(f"\n❌ Recovery is frozen for {int(remaining_time)} more seconds due to too many failed attempts.")
+                continue
+                
             if not is_setup_complete:
                 print("\n❌ Please run Setup (Option 1) before attempting recovery.")
                 continue
@@ -128,6 +196,7 @@ def main_interactive_loop():
 
             selection = input("Enter the numbers of participating guardians, separated by commas (e.g., 1,3,5): ")
             participating_guardians = []
+            guardian_ids = []
 
             try:
                 indices = [int(s.strip()) - 1 for s in selection.split(',')]
@@ -136,12 +205,14 @@ def main_interactive_loop():
                 for i in indices:
                     if 0 <= i < len(guardians):
                         participating_guardians.append(guardians[i])
+                        guardian_ids.append(guardians[i].did)
                     elif i == len(guardians):
                         print_backend("An impostor is attempting to join the recovery!")
                         impostor = Guardian("Mallory (Impostor)")
                         impostor.shard = (99, 99999)
                         impostor.commitment = "invalid"
                         participating_guardians.append(impostor)
+                        guardian_ids.append("impostor_did")
                     else:
                         print(f"Warning: Guardian number {i+1} is invalid and will be ignored.")
             except ValueError:
@@ -162,13 +233,27 @@ def main_interactive_loop():
 
                 if recovered_secret_string == my_secret_string:
                     print("✅ The reconstructed secret matches the original!")
+                    # Create audit record for successful recovery
+                    create_audit_record(guardian_ids, "success", user_id)
+                    # Reset attempt counter on success
+                    recovery_attempts = 0
                 else:
                     print("🔥 CRITICAL ERROR: Reconstructed secret does NOT match the original!")
+                    # Create audit record for failed recovery
+                    create_audit_record(guardian_ids, "failure_mismatch", user_id)
+                    # Increment attempt counter
+                    recovery_attempts += 1
             else:
                 print("\n" + "="*50)
                 print("🛡️ RECOVERY FAILED. 🛡️")
                 print("The secret remains secure. This is the expected outcome if the policy conditions were not met.")
                 print("="*50)
+                
+                # Create audit record for failed recovery
+                create_audit_record(guardian_ids, "failure_policy", user_id)
+                
+                # Increment attempt counter
+                recovery_attempts += 1
                 
                 # Backup PIN recovery option
                 if backup_set:
@@ -184,16 +269,38 @@ def main_interactive_loop():
                                 print("="*50)
                                 if decrypted_secret == my_secret_string:
                                     print("✅ The reconstructed secret matches the original!")
+                                    # Create audit record for successful backup recovery
+                                    create_audit_record(["backup_pin"], "success", user_id)
+                                    # Reset attempt counter on success
+                                    recovery_attempts = 0
                                 else:
                                     print("🔥 CRITICAL ERROR: Reconstructed secret does NOT match the original!")
+                                    # Create audit record for failed backup recovery
+                                    create_audit_record(["backup_pin"], "failure_mismatch", user_id)
+                                    # Increment attempt counter
+                                    recovery_attempts += 1
                             else:
                                 print("❌ Backup recovery failed: Invalid PIN or corrupted data")
+                                # Create audit record for failed backup recovery
+                                create_audit_record(["backup_pin"], "failure_invalid_pin", user_id)
+                                # Increment attempt counter
+                                recovery_attempts += 1
                         except Exception as e:
                             print(f"❌ Backup recovery failed: {e}")
+                            # Create audit record for failed backup recovery
+                            create_audit_record(["backup_pin"], "failure_exception", user_id)
+                            # Increment attempt counter
+                            recovery_attempts += 1
                     else:
                         print("Backup PIN not used.")
                 else:
                     print("No backup PIN was set during setup. Cannot use backup recovery.")
+            
+            # Check if we've reached the attempt limit
+            if recovery_attempts >= 3:
+                recovery_frozen_until = time.time() + 10  # Freeze for 10 seconds
+                print(f"\n❌ Too many failed attempts. Recovery is now frozen for 10 seconds.")
+                recovery_attempts = 0  # Reset counter after freezing
 
         elif choice == '3':
             print_header("Registering New Guardian")
@@ -203,11 +310,34 @@ def main_interactive_loop():
             print(f"✅ Guardian '{new_guardian.name}' added at runtime with DID: {new_guardian.did[:15]}...")
 
         elif choice == '4':
+            print_header("Audit Log")
+            if os.path.exists("audit_log.json"):
+                try:
+                    with open("audit_log.json", "r") as f:
+                        audit_log = json.load(f)
+                    
+                    if not audit_log:
+                        print("No audit records found.")
+                    else:
+                        for i, record in enumerate(audit_log):
+                            print(f"\nRecord {i+1}:")
+                            print(f"  Hash: {record['hash']}")
+                            print(f"  Timestamp: {record['record']['timestamp']}")
+                            print(f"  User ID: {record['record']['user_id']}")
+                            print(f"  Outcome: {record['record']['outcome']}")
+                            print(f"  Guardian IDs: {', '.join([gid[:10] + '...' for gid in record['record']['guardian_ids']])}")
+                            print(f"  IP Address: {record['record']['ip_address']}")
+                except Exception as e:
+                    print(f"Error reading audit log: {e}")
+            else:
+                print("No audit records found.")
+
+        elif choice == '5':
             print("\nExiting KeyWeave demonstration. Goodbye! 👋")
             break
 
         else:
-            print("\nInvalid choice. Please enter 1, 2, 3, or 4.")
+            print("\nInvalid choice. Please enter 1, 2, 3, 4, or 5.")
 
 if __name__ == "__main__":
     main_interactive_loop()
