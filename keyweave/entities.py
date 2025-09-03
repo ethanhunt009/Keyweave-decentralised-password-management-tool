@@ -107,7 +107,7 @@ class RecoveryPolicy:
         
         # Check if there are any guardians
         if self.num_guardians == 0:
-            print("❌ No guardians available. Please add guardians first.")
+            print("No guardians available. Please add guardians first.")
             self.threshold = 0
             self.authorized_dids = set()
             return

@@ -14,7 +14,7 @@ from cryptography.hazmat.backends import default_backend
 # --- Helper Functions ---
 def print_header(title):
     print("\n" + "="*50)
-    print(f"🚀 {title} 🚀")
+    print(f"{title}")
     print("="*50)
 
 def print_backend(message):
@@ -132,7 +132,7 @@ def user_signup():
         with open("users.json", "r") as f:
             users = json.load(f)
         if username in users:
-            print("❌ Username already exists. Please choose a different one.")
+            print("sername already exists. Please choose a different one.")
             return None
     else:
         users = {}
@@ -141,7 +141,7 @@ def user_signup():
     confirm_password = input("Confirm password: ")
     
     if password != confirm_password:
-        print("❌ Passwords do not match.")
+        print("Passwords do not match.")
         return None
     
     # Hash and store the password
@@ -164,7 +164,7 @@ def user_login():
     print_header("User Login")
     
     if not os.path.exists("users.json"):
-        print("❌ No users registered yet. Please sign up first.")
+        print("No users registered yet. Please sign up first.")
         return None
     
     with open("users.json", "r") as f:
@@ -174,15 +174,15 @@ def user_login():
     password = input("Password: ")
     
     if username not in users:
-        print("❌ User not found.")
+        print("User not found.")
         return None
     
     stored_password = bytes.fromhex(users[username])
     if verify_password(stored_password, password):
-        print("✅ Login successful!")
+        print("Login successful!")
         return username
     else:
-        print("❌ Invalid password.")
+        print("Invalid password.")
         return None
 
 # User data management functions
@@ -217,7 +217,7 @@ def user_recovery():
     print_header("Account Recovery")
     
     if not os.path.exists("users.json"):
-        print("❌ No users registered yet. Please sign up first.")
+        print("No users registered yet. Please sign up first.")
         return None
     
     with open("users.json", "r") as f:
@@ -226,7 +226,7 @@ def user_recovery():
     username = input("Enter your username: ")
     
     if username not in users:
-        print("❌ User not found.")
+        print("User not found.")
         return None
     
     # Load user data
@@ -268,7 +268,7 @@ def user_recovery():
     
     # Check if setup is complete
     if not is_setup_complete:
-        print("❌ No recovery setup found for this user. Please set up guardians first.")
+        print("No recovery setup found for this user. Please set up guardians first.")
         return None
 
     # Start recovery process
@@ -277,7 +277,7 @@ def user_recovery():
     # Check if recovery is frozen
     if current_time < recovery_frozen_until:
         remaining_time = recovery_frozen_until - current_time
-        print(f"\n❌ Recovery is frozen for {int(remaining_time)} more seconds due to too many failed attempts.")
+        print(f"\nRecovery is frozen for {int(remaining_time)} more seconds due to too many failed attempts.")
         return None
 
     print("Available Guardians:")
@@ -307,7 +307,7 @@ def user_recovery():
             else:
                 print(f"Warning: Guardian number {i+1} is invalid and will be ignored.")
     except ValueError:
-        print("\n❌ Invalid input. Please enter numbers separated by commas.")
+        print("\nInvalid input. Please enter numbers separated by commas.")
         return None
 
     print_backend("Starting the recovery protocol with the selected participants...")
@@ -329,7 +329,7 @@ def user_recovery():
             try:
                 recovered_secret_string = recovered_bytes.decode('utf-8')
             except UnicodeDecodeError:
-                print("❌ Failed to decode recovered secret. The data may be corrupted.")
+                print("Failed to decode recovered secret. The data may be corrupted.")
                 # Create audit record for failed recovery
                 create_audit_record(guardian_ids, "failure_corrupted", username, "all_accounts")
                 # Increment attempt counter
@@ -341,7 +341,7 @@ def user_recovery():
             recovered_accounts = json.loads(recovered_secret_string)
             
             print("\n" + "="*50)
-            print(f"🎉 RECOVERY SUCCEEDED! 🎉")
+            print(f"RECOVERY SUCCEEDED!")
             print("Recovered Accounts:")
             
             for account_name, (username_acc, password_acc) in recovered_accounts.items():
@@ -362,10 +362,10 @@ def user_recovery():
             user_data["accounts"] = accounts
             save_user_data(username, user_data)
             
-            print("✅ Your accounts have been recovered successfully!")
+            print("Your accounts have been recovered successfully!")
             return username
         except json.JSONDecodeError:
-            print("\n❌ Recovered data is not valid JSON. It may be corrupted.")
+            print("\nRecovered data is not valid JSON. It may be corrupted.")
             # Create audit record for failed recovery
             create_audit_record(guardian_ids, "failure_corrupted", username, "all_accounts")
             # Increment attempt counter
@@ -417,22 +417,22 @@ def user_recovery():
                             user_data["accounts"] = accounts
                             save_user_data(username, user_data)
                             
-                            print("✅ Your accounts have been recovered successfully using your backup PIN!")
+                            print("Your accounts have been recovered successfully using your backup PIN!")
                             return username
                         except json.JSONDecodeError:
-                            print("❌ Backup data is corrupted.")
+                            print("Backup data is corrupted.")
                             # Create audit record for failed backup recovery
                             create_audit_record(["backup_pin"], "failure_corrupted", username, "all_accounts")
                             # Increment attempt counter
                             recovery_attempts += 1
                     else:
-                        print("❌ Backup recovery failed: Invalid PIN")
+                        print("Backup recovery failed: Invalid PIN")
                         # Create audit record for failed backup recovery
                         create_audit_record(["backup_pin"], "failure_invalid_pin", username, "all_accounts")
                         # Increment attempt counter
                         recovery_attempts += 1
                 except Exception as e:
-                    print(f"❌ Backup recovery failed: {e}")
+                    print(f"Backup recovery failed: {e}")
                     # Create audit record for failed backup recovery
                     create_audit_record(["backup_pin"], "failure_exception", username, "all_accounts")
                     # Increment attempt counter
@@ -445,7 +445,7 @@ def user_recovery():
     # Check if we've reached the attempt limit
     if recovery_attempts >= 3:
         recovery_frozen_until = time.time() + 10  # Freeze for 10 seconds
-        print(f"\n❌ Too many failed attempts. Recovery is now frozen for 10 seconds.")
+        print(f"\nToo many failed attempts. Recovery is now frozen for 10 seconds.")
         recovery_attempts = 0  # Reset counter after freezing
     
     return None
@@ -507,7 +507,7 @@ def main_interactive_loop(username):
             
             # Check if there are any guardians
             if not guardians:
-                print("❌ No guardians available. Please add guardians first (Option 5).")
+                print("No guardians available. Please add guardians first (Option 5).")
                 continue
             
             # Backup PIN setup
@@ -523,7 +523,7 @@ def main_interactive_loop(username):
                     if pin1 == pin2:
                         backup_set = True
                         backup_pin = pin1
-                        print("✅ Backup PIN set successfully")
+                        print("Backup PIN set successfully")
                         break
                     else:
                         print("PINs do not match. Try again")
@@ -535,7 +535,7 @@ def main_interactive_loop(username):
             
             # Check if policy was created successfully
             if policy.threshold == 0:
-                print("❌ Failed to create recovery policy. Setup cannot continue.")
+                print("Failed to create recovery policy. Setup cannot continue.")
                 continue
 
             print_backend("Initializing the KeyWeave Network...")
@@ -547,13 +547,13 @@ def main_interactive_loop(username):
             
             if success:
                 is_setup_complete = True
-                print("\n✅ Password manager initialized! You can now add accounts.")
+                print("\nPassword manager initialized! You can now add accounts.")
             else:
-                print("\n❌ Setup failed. Please check if IPFS is running and try again.")
+                print("\nSetup failed. Please check if IPFS is running and try again.")
 
         elif choice == '2':
             if not is_setup_complete:
-                print("\n❌ Please initialize the password manager (Option 1) first.")
+                print("\nPlease initialize the password manager (Option 1) first.")
                 continue
                 
             print_header("Adding New Account")
@@ -563,7 +563,7 @@ def main_interactive_loop(username):
             
             # Store the account
             accounts[account_name] = (username_acc, password_acc)
-            print(f"✅ Account '{account_name}' stored successfully.")
+            print(f"Account '{account_name}' stored successfully.")
             
             # Convert accounts to a single string for encryption
             accounts_json = json.dumps(accounts)
@@ -578,13 +578,13 @@ def main_interactive_loop(username):
             success = network.setup_escrow(secret_as_int, policy, guardians, account_name)
             
             if success:
-                print(f"✅ Account '{account_name}' secured with Guardians.")
+                print(f"Account '{account_name}' secured with Guardians.")
             else:
-                print(f"❌ Failed to secure account '{account_name}' with Guardians.")
+                print(f"Failed to secure account '{account_name}' with Guardians.")
 
         elif choice == '3':
             if not accounts:
-                print("\n❌ No accounts stored yet. Add accounts first.")
+                print("\nNo accounts stored yet. Add accounts first.")
                 continue
                 
             print_header("Stored Accounts")
@@ -609,11 +609,11 @@ def main_interactive_loop(username):
             # Check if recovery is frozen
             if current_time < recovery_frozen_until:
                 remaining_time = recovery_frozen_until - current_time
-                print(f"\n❌ Recovery is frozen for {int(remaining_time)} more seconds due to too many failed attempts.")
+                print(f"\nRecovery is frozen for {int(remaining_time)} more seconds due to too many failed attempts.")
                 continue
                 
             if not is_setup_complete:
-                print("\n❌ Please initialize the password manager (Option 1) first.")
+                print("\nPlease initialize the password manager (Option 1) first.")
                 continue
 
             print_header("Recovering Access to Accounts")
@@ -644,7 +644,7 @@ def main_interactive_loop(username):
                     else:
                         print(f"Warning: Guardian number {i+1} is invalid and will be ignored.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter numbers separated by commas.")
+                print("\nInvalid input. Please enter numbers separated by commas.")
                 continue
 
             print_backend("Starting the recovery protocol with the selected participants...")
@@ -666,7 +666,7 @@ def main_interactive_loop(username):
                     try:
                         recovered_secret_string = recovered_bytes.decode('utf-8')
                     except UnicodeDecodeError:
-                        print("❌ Failed to decode recovered secret. The data may be corrupted.")
+                        print("Failed to decode recovered secret. The data may be corrupted.")
                         # Create audit record for failed recovery
                         create_audit_record(guardian_ids, "failure_corrupted", username, "all_accounts")
                         # Increment attempt counter
@@ -695,7 +695,7 @@ def main_interactive_loop(username):
                     # Reset attempt counter on success
                     recovery_attempts = 0
                 except json.JSONDecodeError:
-                    print("\n❌ Recovered data is not valid JSON. It may be corrupted.")
+                    print("\nRecovered data is not valid JSON. It may be corrupted.")
                     # Create audit record for failed recovery
                     create_audit_record(guardian_ids, "failure_corrupted", username, "all_accounts")
                     # Increment attempt counter
@@ -725,7 +725,7 @@ def main_interactive_loop(username):
                                     recovered_accounts = json.loads(decrypted_data)
                                     
                                     print("\n" + "="*50)
-                                    print(f"🎉 BACKUP RECOVERY SUCCEEDED! 🎉")
+                                    print(f"BACKUP RECOVERY SUCCEEDED")
                                     print("Recovered Accounts:")
                                     
                                     for account_name, (username_acc, password_acc) in recovered_accounts.items():
@@ -742,19 +742,19 @@ def main_interactive_loop(username):
                                     # Reset attempt counter on success
                                     recovery_attempts = 0
                                 except json.JSONDecodeError:
-                                    print("❌ Backup data is corrupted.")
+                                    print("Backup data is corrupted.")
                                     # Create audit record for failed backup recovery
                                     create_audit_record(["backup_pin"], "failure_corrupted", username, "all_accounts")
                                     # Increment attempt counter
                                     recovery_attempts += 1
                             else:
-                                print("❌ Backup recovery failed: Invalid PIN")
+                                print("Backup recovery failed: Invalid PIN")
                                 # Create audit record for failed backup recovery
                                 create_audit_record(["backup_pin"], "failure_invalid_pin", username, "all_accounts")
                                 # Increment attempt counter
                                 recovery_attempts += 1
                         except Exception as e:
-                            print(f"❌ Backup recovery failed: {e}")
+                            print(f"Backup recovery failed: {e}")
                             # Create audit record for failed backup recovery
                             create_audit_record(["backup_pin"], "failure_exception", username, "all_accounts")
                             # Increment attempt counter
@@ -767,7 +767,7 @@ def main_interactive_loop(username):
             # Check if we've reached the attempt limit
             if recovery_attempts >= 3:
                 recovery_frozen_until = time.time() + 10  # Freeze for 10 seconds
-                print(f"\n❌ Too many failed attempts. Recovery is now frozen for 10 seconds.")
+                print(f"\nToo many failed attempts. Recovery is now frozen for 10 seconds.")
                 recovery_attempts = 0  # Reset counter after freezing
 
         elif choice == '5':
@@ -775,7 +775,7 @@ def main_interactive_loop(username):
             guardian_name = input("Enter the new Guardian's name: ")
             new_guardian = Guardian(guardian_name)
             guardians.append(new_guardian)
-            print(f"✅ Guardian '{new_guardian.name}' added at runtime with DID: {new_guardian.did[:15]}...")
+            print(f"Guardian '{new_guardian.name}' added at runtime with DID: {new_guardian.did[:15]}...")
 
         elif choice == '6':
             print_header("Audit Log")
@@ -852,7 +852,7 @@ def main_interactive_loop(username):
             }
             
             save_user_data(username, user_data)
-            print("\nExiting KeyWeave Password Manager. Goodbye! 👋")
+            print("\nExiting KeyWeave Password Manager.")
             break
 
         else:
@@ -882,11 +882,11 @@ def main():
         elif choice == '3':
             username = user_recovery()
             if username:
-                print(f"✅ Recovery successful! Logging in as {username}...")
+                print(f"Recovery successful! Logging in as {username}...")
                 main_interactive_loop(username)
                 
         elif choice == '4':
-            print("\nExiting KeyWeave Password Manager. Goodbye! 👋")
+            print("\nExiting KeyWeave Password Manager.")
             break
             
         else:

@@ -21,11 +21,11 @@ class KeyWeaveNetwork:
             response.raise_for_status()
             return response.json()["Hash"]
         except requests.exceptions.ConnectionError:
-            print("\n❌ ERROR: Could not connect to IPFS daemon at http://127.0.0.1:5001")
+            print("\nERROR: Could not connect to IPFS daemon at http://127.0.0.1:5001")
             print("Please start IPFS with: 'ipfs daemon'")
             raise
         except Exception as e:
-            print(f"\n❌ ERROR: Failed to add data to IPFS: {e}")
+            print(f"\nERROR: Failed to add data to IPFS: {e}")
             raise
 
     def setup_escrow(self, secret, policy, guardians, account_name="default") -> bool:
@@ -38,11 +38,11 @@ class KeyWeaveNetwork:
             test_response.raise_for_status()
             print(f"[IPFS] Connected to IPFS node (version {test_response.json()['Version']})")
         except requests.exceptions.ConnectionError:
-            print("\n❌ IPFS CONNECTION FAILED: Daemon not running")
+            print("\nIPFS CONNECTION FAILED: Daemon not running")
             print("Run 'ipfs daemon' in a separate terminal")
             return False
         except Exception as e:
-            print(f"\n❌ ERROR: IPFS connection test failed: {e}")
+            print(f"\nERROR: IPFS connection test failed: {e}")
             return False
 
         if policy.num_guardians != len(guardians):
@@ -94,7 +94,7 @@ class KeyWeaveNetwork:
                 return False
                 
         except Exception as e:
-            print(f"\n❌ Setup failed: {e}")
+            print(f"\nSetup failed: {e}")
             return False
 
     def initiate_recovery(self, recovery_guardians, policy, account_name="default"):
