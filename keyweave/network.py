@@ -1,6 +1,8 @@
+# ----- network.py -----
 import requests
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.backends import default_backend
 from keyweave.crypto import shamir_split_secret, shamir_reconstruct_secret
 
 class KeyWeaveNetwork:
@@ -26,9 +28,9 @@ class KeyWeaveNetwork:
             print(f"\n❌ ERROR: Failed to add data to IPFS: {e}")
             raise
 
-    def setup_escrow(self, secret, policy, guardians) -> bool:
+    def setup_escrow(self, secret, policy, guardians, account_name="default") -> bool:
         """Splits and encrypts the secret, uploads to IPFS, and distributes CIDs."""
-        print("\n--- Initiating KeyWeave Setup ---")
+        print(f"\n--- Securing Account '{account_name}' with KeyWeave ---")
         
         # First check if IPFS is running
         try:
@@ -49,15 +51,17 @@ class KeyWeaveNetwork:
 
         try:
             shares = shamir_split_secret(secret, policy.threshold, policy.num_guardians)
-            print(f"[KeyWeave] Secret split into {len(shares)} shares.")
+            print(f"[KeyWeave] Secret for '{account_name}' split into {len(shares)} shares.")
 
+            successful_guardians = 0
             for i, guardian in enumerate(guardians):
                 x, y = shares[i]
                 shard_string = f"{x},{y}"
                 
                 # Encrypt shard with guardian's public key
                 public_key = serialization.load_pem_public_key(
-                    guardian.public_key.encode('utf-8')
+                    guardian.public_key.encode('utf-8'),
+                    backend=default_backend()
                 )
                 encrypted = public_key.encrypt(
                     shard_string.encode('utf-8'),
@@ -70,19 +74,32 @@ class KeyWeaveNetwork:
 
                 cid = self.add_to_ipfs(encrypted)
                 print(f"[IPFS] Uploaded RSA-encrypted shard for {guardian.name}, CID: {cid}")
-                guardian.receive_shard_ipfs(cid)
+                
+                # Try to have the guardian receive the shard
+                if guardian.receive_shard_ipfs(cid, account_name):
+                    successful_guardians += 1
+                    # Store commitments by account
+                    if account_name not in self.guardian_commitments:
+                        self.guardian_commitments[account_name] = {}
+                    self.guardian_commitments[account_name][guardian.did] = guardian.commitments[account_name]
+                else:
+                    print(f"[KeyWeave] Failed to initialize guardian {guardian.name}")
 
-                self.guardian_commitments[guardian.did] = guardian.commitment
-
-            print("[KeyWeave] All shares encrypted, uploaded to IPFS, and commitments recorded.")
-            return True
+            if successful_guardians >= policy.threshold:
+                print(f"[KeyWeave] {successful_guardians} guardians initialized successfully.")
+                print(f"[KeyWeave] All shares for '{account_name}' encrypted, uploaded to IPFS, and commitments recorded.")
+                return True
+            else:
+                print(f"[KeyWeave] Only {successful_guardians} guardians initialized, but need {policy.threshold} for recovery.")
+                return False
+                
         except Exception as e:
             print(f"\n❌ Setup failed: {e}")
             return False
 
-    def initiate_recovery(self, recovery_guardians, policy):
+    def initiate_recovery(self, recovery_guardians, policy, account_name="default"):
         """Verifies guardian proofs and reconstructs the secret if threshold is met."""
-        print(f"\n--- Initiating KeyWeave Recovery for {len(recovery_guardians)} guardians ---")
+        print(f"\n--- Initiating KeyWeave Recovery for '{account_name}' with {len(recovery_guardians)} guardians ---")
         if len(recovery_guardians) < policy.threshold:
             print(f"[KeyWeave] RECOVERY FAILED: Not enough guardians. Need {policy.threshold}, got {len(recovery_guardians)}.")
             return None
@@ -90,23 +107,27 @@ class KeyWeaveNetwork:
         valid_proofs = 0
         shards_for_reconstruction = []
 
-        print(f"[KeyWeave] Collecting and verifying proofs...")
+        print(f"[KeyWeave] Collecting and verifying proofs for '{account_name}'...")
         for guardian in recovery_guardians:
-            proof = guardian.provide_proof()
+            proof = guardian.provide_proof(account_name)
             guardian_did = proof["did"]
             guardian_commitment = proof["commitment"]
 
-            if guardian_did in policy.authorized_dids and self.guardian_commitments.get(guardian_did) == guardian_commitment:
+            if (account_name in self.guardian_commitments and 
+                guardian_did in policy.authorized_dids and 
+                self.guardian_commitments[account_name].get(guardian_did) == guardian_commitment):
                 print(f"  [KeyWeave] Proof from Guardian {guardian.name} ({guardian_did[:10]}...) is VALID.")
                 valid_proofs += 1
-                shards_for_reconstruction.append(guardian.provide_shard_for_reconstruction())
+                shard = guardian.provide_shard_for_reconstruction(account_name)
+                if shard:
+                    shards_for_reconstruction.append(shard)
             else:
                 print(f"  [KeyWeave] Proof from Guardian {guardian.name} is INVALID.")
 
         if valid_proofs >= policy.threshold:
             print(f"[KeyWeave] Success! {valid_proofs} valid proofs collected, meeting the threshold of {policy.threshold}.")
             reconstructed_secret = shamir_reconstruct_secret(shards_for_reconstruction)
-            print("[KeyWeave] RECOVERY SUCCESSFUL!")
+            print(f"[KeyWeave] RECOVERY SUCCESSFUL for '{account_name}'!")
             return reconstructed_secret
         else:
             print(f"[KeyWeave] RECOVERY FAILED: Only {valid_proofs} valid proofs, but threshold is {policy.threshold}.")
