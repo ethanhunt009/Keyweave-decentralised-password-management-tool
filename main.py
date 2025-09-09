@@ -836,7 +836,7 @@ def main_interactive_loop(username):
                     recovered_accounts = json.loads(recovered_secret_string)
                     
                     print("\n" + "="*50)
-                    print(f"🎉 RECOVERY SUCCEEDED! 🎉")
+                    print(f"RECOVERY SUCCEEDED!")
                     print("Recovered Accounts:")
                     
                     for account_name, (username_acc, password_acc) in recovered_accounts.items():
@@ -860,7 +860,7 @@ def main_interactive_loop(username):
                     recovery_attempts += 1
             else:
                 print("\n" + "="*50)
-                print("🛡️ RECOVERY FAILED. 🛡️")
+                print("RECOVERY FAILED.xxxxxxxxxxxxxxxxxxxxxxxxxxx")
                 print("Access remains secure. This is the expected outcome if the policy conditions were not met.")
                 print("="*50)
                 
