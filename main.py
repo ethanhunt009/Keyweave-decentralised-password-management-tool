@@ -132,7 +132,7 @@ def user_signup():
         with open("users.json", "r") as f:
             users = json.load(f)
         if username in users:
-            print("sername already exists. Please choose a different one.")
+            print("Username already exists. Please choose a different one.")
             return None
     else:
         users = {}
@@ -156,8 +156,151 @@ def user_signup():
     if not os.path.exists(user_dir):
         os.makedirs(user_dir)
     
-    print("✅ User registration successful!")
+    # Create a guardian profile for this user
+    guardian = Guardian(username)  # This will generate DID and keys
+    
+    # Now save the guardian to global guardians.json if it doesn't exist
+    guardians = {}
+    if os.path.exists("guardians.json"):
+        with open("guardians.json", "r") as f:
+            guardians = json.load(f)
+    
+    # Only add if not already exists
+    if username not in guardians:
+        guardians[username] = {
+            "name": guardian.name,
+            "did": guardian.did,
+            "public_key": guardian.public_key
+        }
+        with open("guardians.json", "w") as f:
+            json.dump(guardians, f, indent=2)
+    
+    # Save the private key in the user's data
+    user_data = load_user_data(username)
+    user_data["guardian_private_key"] = guardian.get_private_key_bytes()
+    save_user_data(username, user_data)
+    
+    print("User registration successful! Guardian profile created.")
+    
+    # Now select guardians and set threshold
+    select_guardians_and_threshold(username)
+    
     return username
+
+def select_guardians_and_threshold(username):
+    """Allow user to select guardians from existing users and set threshold."""
+    print_header("Select Guardians and Set Threshold")
+    
+    # Load global guardians
+    if not os.path.exists("guardians.json"):
+        print("No guardians available yet. Please ask other users to sign up first.")
+        return False
+
+    with open("guardians.json", "r") as f:
+        all_guardians = json.load(f)
+
+    # Remove current user from the list
+    if username in all_guardians:
+        del all_guardians[username]
+
+    if not all_guardians:
+        print("No other guardians available. You can add guardians later.")
+        return False
+
+    # Convert to list for indexing
+    guardian_list = list(all_guardians.items())
+    
+    while True:
+        # Search functionality
+        search_term = input("\nEnter search term to filter guardians (or press enter to see all): ")
+        if search_term:
+            filtered_guardians = []
+            for uname, g in guardian_list:
+                if search_term.lower() in uname.lower() or search_term.lower() in g['name'].lower():
+                    filtered_guardians.append((uname, g))
+            display_list = filtered_guardians
+            if not display_list:
+                print("No guardians match the search term.")
+                continue
+        else:
+            display_list = guardian_list
+
+        # Display list of guardians
+        print("\nAvailable Guardians:")
+        for idx, (uname, g) in enumerate(display_list):
+            print(f"{idx+1}. {g['name']} (Username: {uname}, DID: {g['did'][:10]}...)")
+
+        # Select guardians
+        selected_guardians = []
+        try:
+            choice = input("\nEnter the numbers of guardians to select, separated by commas (e.g., 1,3,5): ")
+            if not choice.strip():
+                print("No selection made. Please try again.")
+                continue
+                
+            indices = [int(idx.strip()) - 1 for idx in choice.split(',')]
+            for idx in indices:
+                if 0 <= idx < len(display_list):
+                    uname, g = display_list[idx]
+                    selected_guardians.append({
+                        "name": g['name'],
+                        "did": g['did'],
+                        "public_key": g['public_key']
+                    })
+                else:
+                    print(f"Invalid index: {idx+1}")
+            
+            if selected_guardians:
+                break
+            else:
+                print("No valid guardians selected. Please try again.")
+        except ValueError:
+            print("Invalid input. Please enter numbers separated by commas.")
+
+    # Set threshold
+    while True:
+        try:
+            threshold = int(input(f"\nEnter recovery threshold (1-{len(selected_guardians)}): "))
+            if 1 <= threshold <= len(selected_guardians):
+                break
+            else:
+                print(f"Threshold must be between 1 and {len(selected_guardians)}.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+    # Load user data and update with selected guardians and threshold
+    user_data = load_user_data(username)
+    user_data["guardians"] = selected_guardians
+    user_data["threshold"] = threshold
+    save_user_data(username, user_data)
+
+    print(f"\nSelected {len(selected_guardians)} guardians and threshold set to {threshold}.")
+    return True
+
+def initialize_predefined_guardians():
+    """Initialize the predefined guardians and save them to guardians.json"""
+    guardians = {}
+    
+    # Check if guardians.json already exists
+    if os.path.exists("guardians.json"):
+        with open("guardians.json", "r") as f:
+            guardians = json.load(f)
+    
+    # Add predefined guardians if they don't exist
+    from keyweave.entities import PREDEFINED_GUARDIANS
+    for guardian in PREDEFINED_GUARDIANS:
+        if guardian.name not in guardians:
+            guardians[guardian.name] = {
+                "name": guardian.name,
+                "did": guardian.did,
+                "public_key": guardian.public_key
+            }
+    
+    # Save to file
+    with open("guardians.json", "w") as f:
+        json.dump(guardians, f, indent=2)
+    
+    print("Predefined guardians initialized.")
 
 def user_login():
     """Handle user login"""
@@ -197,12 +340,15 @@ def load_user_data(username):
     return {
         "accounts": {},
         "guardians": [],
+        "threshold": 0,  # New field for threshold
         "backup_set": False,
         "backup_secret_encrypted": None,
         "backup_pin": None,
         "policy": None,
-        "is_setup_complete": False
+        "is_setup_complete": False,
+        "guardian_private_key": None  # New field for user's own guardian private key
     }
+
 
 def save_user_data(username, data):
     """Save user data to file"""
@@ -458,6 +604,7 @@ def main_interactive_loop(username):
     # Extract data
     accounts = user_data.get("accounts", {})
     guardians_data = user_data.get("guardians", [])
+    threshold = user_data.get("threshold", 0)  # Get threshold from user data
     backup_set = user_data.get("backup_set", False)
     backup_secret_encrypted = user_data.get("backup_secret_encrypted", None)
     backup_pin = user_data.get("backup_pin", None)
@@ -470,18 +617,26 @@ def main_interactive_loop(username):
         guardian = Guardian(g_data["name"])
         guardian.did = g_data["did"]
         guardian.public_key = g_data["public_key"]
+        guardian.private_key = None  # Set to None, will load from user data when needed
         guardian.shards = g_data.get("shards", {})
         guardian.commitments = g_data.get("commitments", {})
         guardian.cids = g_data.get("cids", {})
         guardians.append(guardian)
     
-    # Recreate policy from data
+    # Recreate policy from data - use stored threshold
     policy = None
     if policy_data:
         policy = RecoveryPolicy([])
         policy.threshold = policy_data["threshold"]
         policy.num_guardians = policy_data["num_guardians"]
         policy.authorized_dids = set(policy_data["authorized_dids"])
+    else:
+        # If policy not set, create from stored threshold and guardians
+        if guardians and threshold > 0:
+            policy = RecoveryPolicy([g.did for g in guardians])
+            policy.threshold = threshold  # Override the threshold set in RecoveryPolicy
+            policy.num_guardians = len(guardians)
+            policy.authorized_dids = set([g.did for g in guardians])
     
     network = KeyWeaveNetwork()
     
@@ -491,7 +646,7 @@ def main_interactive_loop(username):
 
     while True:
         print(f"\n--- KeyWeave Password Manager (User: {username}) ---")
-        print("1. [SETUP] Initialize password manager with Guardians")
+        print("1. [SETUP] Set PIN")
         print("2. [ADD] Add a new account to store")
         print("3. [VIEW] View stored accounts (requires recovery)")
         print("4. [RECOVERY] Recover access to accounts")
@@ -510,6 +665,11 @@ def main_interactive_loop(username):
                 print("No guardians available. Please add guardians first (Option 5).")
                 continue
             
+            # Use the stored threshold from user data
+            if threshold == 0:
+                print("Threshold not set. Please set threshold during signup or later.")
+                continue
+
             # Backup PIN setup
             print("\n--- Backup PIN Setup ---")
             set_pin = input("Would you like to set a backup PIN? (y/n): ").lower()
@@ -530,13 +690,11 @@ def main_interactive_loop(username):
             else:
                 print("Skipping backup PIN setup")
 
-            print_backend("Defining the Recovery Policy with runtime threshold...")
-            policy = RecoveryPolicy([g.did for g in guardians])
-            
-            # Check if policy was created successfully
-            if policy.threshold == 0:
-                print("Failed to create recovery policy. Setup cannot continue.")
-                continue
+            print_backend("Defining the Recovery Policy with stored threshold...")
+            # Create policy using stored threshold (pass it as parameter)
+            policy = RecoveryPolicy([g.did for g in guardians], threshold)
+            policy.num_guardians = len(guardians)
+            policy.authorized_dids = set([g.did for g in guardians])
 
             print_backend("Initializing the KeyWeave Network...")
             network = KeyWeaveNetwork()
@@ -813,6 +971,7 @@ def main_interactive_loop(username):
                     "commitments": g.commitments,
                     "cids": g.cids
                 } for g in guardians],
+                "threshold": threshold,
                 "backup_set": backup_set,
                 "backup_secret_encrypted": backup_secret_encrypted,
                 "backup_pin": backup_pin,
@@ -840,6 +999,7 @@ def main_interactive_loop(username):
                     "commitments": g.commitments,
                     "cids": g.cids
                 } for g in guardians],
+                "threshold": threshold,
                 "backup_set": backup_set,
                 "backup_secret_encrypted": backup_secret_encrypted,
                 "backup_pin": backup_pin,
@@ -860,6 +1020,7 @@ def main_interactive_loop(username):
 
 def main():
     """Main entry point with authentication"""
+    initialize_predefined_guardians()
     while True:
         print_header("KeyWeave Password Manager")
         print("1. Sign Up")
