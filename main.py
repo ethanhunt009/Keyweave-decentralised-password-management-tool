@@ -769,7 +769,7 @@ def main_interactive_loop(username):
                 remaining_time = recovery_frozen_until - current_time
                 print(f"\nRecovery is frozen for {int(remaining_time)} more seconds due to too many failed attempts.")
                 continue
-                
+            print(f"setup complete : {is_setup_complete}")
             if not is_setup_complete:
                 print("\nPlease initialize the password manager (Option 1) first.")
                 continue

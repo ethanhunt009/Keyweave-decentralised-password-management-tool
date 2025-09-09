@@ -38,5 +38,10 @@
     "name": "lol",
     "did": "did:example:f842c09b-0e50-422e-8e9f-48398a651a4f",
     "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj2nKyryCJP5Y4oWDfRPK\nbIisPq26U7r6XAxDyDjWhSh7Eku0NGf8cfb+xD98KKHc+RXkwdJhQh5/pnhT4d1v\nwmh5jUfc5u5EJL//YMNaY3j8bhmub5Qg3n2nW/71ZsQLiKxYBYP6YOE6u+nwqEw5\nw9WE4gwCjLJ2Hs+wW81vh9FjkkOYknVAgSVwQWkcVe+503sPvBlb5HeyW586u9Pv\nMw1ZT0Z3aWsWMFqBfl/WRaVZBQehLy2bIPZhMT550/EygzjniV7E2ny9U9RW+mR6\nAK0Q5732A4MOLbpVrJej75Xu96vWB/PI7gpMXDCZDr0ggLhVTJ7fZM5qOE5ibzTE\nEQIDAQAB\n-----END PUBLIC KEY-----\n"
+  },
+  "asdf": {
+    "name": "asdf",
+    "did": "did:example:fc0915c0-1676-41c7-b390-154c5ec428f3",
+    "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs//a0bk7Mx0tezkPsFXY\n+V0mUk6dpfQg0MMxk4j4S13jw1g5mTIOoSi8yG9WflogXgs7LOdbVaaRWWxxlPLQ\n33vMNE2EoIpZjxeBuGySkfTOl4f2nFzGPN0yuUUsoZXhhC/dlR/3cfw+iTYxx5Xo\n8okDOPKMWjflJZuEeZrZDHzec+mSz62YcHjCwz/GwFbUpJaBd+vfOJj7e5nN9ZQ8\nSn1roFyBnfyvNYMauwuTPamInIkqRNkQwBCx2rd/sNS+z1JVzk7hnhXMw9Mbm6LL\n2VG2HHxG6QOUwom9M/SmeL+egGz/sqZ3vZzHT9xlEyXf4LOkkHzYvVe8H2vYjOUw\niQIDAQAB\n-----END PUBLIC KEY-----\n"
   }
 }
