@@ -927,14 +927,77 @@ def main_interactive_loop(username):
                 recovery_frozen_until = time.time() + 10  # Freeze for 10 seconds
                 print(f"\nToo many failed attempts. Recovery is now frozen for 10 seconds.")
                 recovery_attempts = 0  # Reset counter after freezing
-
+            
         elif choice == '5':
-            print_header("Registering New Guardian")
-            guardian_name = input("Enter the new Guardian's name: ")
-            new_guardian = Guardian(guardian_name)
-            guardians.append(new_guardian)
-            print(f"Guardian '{new_guardian.name}' added at runtime with DID: {new_guardian.did[:15]}...")
+            print_header("Add New Guardian")
+            
+            # Load global guardians
+            if not os.path.exists("guardians.json"):
+                print("No guardians available yet.")
+                continue
 
+            with open("guardians.json", "r") as f:
+                all_guardians = json.load(f)
+
+            # Remove current user and already added guardians from the list
+            current_guardian_names = [g.name for g in guardians]
+            available_guardians = {}
+            
+            for username, guardian_data in all_guardians.items():
+                if username != username and guardian_data["name"] not in current_guardian_names:
+                    available_guardians[username] = guardian_data
+
+            if not available_guardians:
+                print("No additional guardians available to add.")
+                continue
+
+            # Convert to list for indexing
+            guardian_list = list(available_guardians.items())
+            
+            # Display list of available guardians
+            print("\nAvailable Guardians to Add:")
+            for idx, (uname, g) in enumerate(guardian_list):
+                print(f"{idx+1}. {g['name']} (Username: {uname}, DID: {g['did'][:10]}...)")
+            
+            # Select guardians to add
+            try:
+                selection = input("\nEnter the numbers of guardians to add, separated by commas (e.g., 1,3): ")
+                indices = [int(idx.strip()) - 1 for idx in selection.split(',')]
+                
+                new_guardians = []
+                for idx in indices:
+                    if 0 <= idx < len(guardian_list):
+                        uname, g = guardian_list[idx]
+                        new_guardian = Guardian(g["name"])
+                        new_guardian.did = g["did"]
+                        new_guardian.public_key = g["public_key"]
+                        new_guardian.private_key = None  # Will load from user data when needed
+                        new_guardians.append(new_guardian)
+                        print(f"Added {g['name']} as a guardian.")
+                    else:
+                        print(f"Invalid index: {idx+1}")
+                
+                # Add the new guardians to the current list
+                guardians.extend(new_guardians)
+                
+                # Ask if user wants to update threshold
+                update_threshold = input(f"\nYou now have {len(guardians)} guardians. Update threshold? (y/n): ").lower()
+                if update_threshold == 'y':
+                    while True:
+                        try:
+                            new_threshold = int(input(f"Enter new recovery threshold (1-{len(guardians)}): "))
+                            if 1 <= new_threshold <= len(guardians):
+                                threshold = new_threshold
+                                print(f"Threshold updated to {threshold}.")
+                                break
+                            else:
+                                print(f"Threshold must be between 1 and {len(guardians)}.")
+                        except ValueError:
+                            print("Invalid input. Please enter a number.")
+                
+            except ValueError:
+                print("Invalid input. Please enter numbers separated by commas.")
+                
         elif choice == '6':
             print_header("Audit Log")
             if os.path.exists("audit_log.json"):
